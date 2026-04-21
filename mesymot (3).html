@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>מסימות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{direction:rtl;font-family:'Heebo',sans-serif;background:#F0EFEB;min-height:100vh;color:#111827}
+:root{
+  --bg:#F0EFEB;--surface:#fff;--border:#E5E7EB;
+  --accent:#2563EB;--accent-light:#EFF6FF;
+  --text:#111827;--muted:#6B7280;
+  --success:#059669;--danger:#DC2626;
+  --shadow:0 1px 4px rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.04);
+  --shadow-lg:0 8px 32px rgba(0,0,0,.16);--r:16px;
+}
+input,textarea,button{font-family:'Heebo',sans-serif}
+input:focus,textarea:focus{outline:none!important}
+button{cursor:pointer}
+@keyframes slideUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.card-enter{animation:slideUp .28s cubic-bezier(.22,.68,0,1.2) both}
+.overlay-bg{animation:fadeIn .2s ease}
+.sheet{animation:slideUp .25s cubic-bezier(.22,.68,0,1.2) both}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-thumb{background:#D1D5DB;border-radius:3px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+<script>
+  const FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCJscpZTP82PhfCqD6caggBO69sli0CkOg",
+    authDomain: "mesymot.firebaseapp.com",
+    databaseURL: "https://mesymot-default-rtdb.firebaseio.com",
+    projectId: "mesymot",
+    storageBucket: "mesymot.firebasestorage.app",
+    messagingSenderId: "65998558766",
+    appId: "1:65998558766:web:def97a6a643545d04bb1bf",
+  };
+  try {
+    firebase.initializeApp(FIREBASE_CONFIG);
+    const db = firebase.database();
+    const _ref = (dbOrPath, path) => db.ref(path !== undefined ? path : dbOrPath);
+    window.__FB = {
+      db, ref: _ref,
+      onValue: (r, cb) => { r.on("value", snap => cb(snap), err => { window.__FB_ERROR = err.message; window.dispatchEvent(new Event("fb-error")); }); },
+      set: (r, val) => r.set(val).catch(e => { window.__FB_ERROR = e.message; }),
+      remove: (r) => r.remove().catch(e => { window.__FB_ERROR = e.message; }),
+    };
+    window.__FB_READY = true;
+    window.dispatchEvent(new Event("fb-ready"));
+  } catch(e) {
+    window.__FB_ERROR = e.message;
+    window.dispatchEvent(new Event("fb-error"));
+  }
+</script>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+
+const uid = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2,7)}`;
+const TODAY = () => new Date().toLocaleDateString("he-IL",{weekday:"long",year:"numeric",month:"long",day:"numeric"});
+const fmtDate = ts => new Date(ts).toLocaleDateString("he-IL",{day:"numeric",month:"short",year:"numeric"});
+
+const COLORS = [
+  {bg:"#FEF9C3",text:"#713F12",border:"#FEF08A"},
+  {bg:"#DBEAFE",text:"#1E3A8A",border:"#BFDBFE"},
+  {bg:"#DCFCE7",text:"#14532D",border:"#BBF7D0"},
+  {bg:"#FCE7F3",text:"#831843",border:"#F9A8D4"},
+  {bg:"#EDE9FE",text:"#4C1D95",border:"#DDD6FE"},
+  {bg:"#FFEDD5",text:"#7C2D12",border:"#FED7AA"},
+  {bg:"#F0FDF4",text:"#166534",border:"#86EFAC"},
+  {bg:"#FFF1F2",text:"#881337",border:"#FECDD3"},
+];
+const getLabelColor = (label, all) => COLORS[all.indexOf(label) % COLORS.length] || COLORS[0];
+
+const generateICS = task => {
+  const now = new Date();
+  const stamp = now.toISOString().replace(/[-:.]/g,"").slice(0,15)+"Z";
+  const start = new Date(now); start.setDate(start.getDate()+1); start.setHours(9,0,0,0);
+  const dtS = start.toISOString().replace(/[-:.]/g,"").slice(0,15);
+  const dtE = new Date(start.getTime()+3600000).toISOString().replace(/[-:.]/g,"").slice(0,15);
+  const ics = ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Tasks//HE","BEGIN:VEVENT",
+    `UID:${task.id}@tasks`,`DTSTAMP:${stamp}`,`DTSTART:${dtS}`,`DTEND:${dtE}`,
+    `SUMMARY:${task.title}`,`DESCRIPTION:${(task.body||"").replace(/\n/g,"\\n")}`,
+    "END:VEVENT","END:VCALENDAR"].join("\r\n");
+  const blob = new Blob([ics],{type:"text/calendar;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const a = Object.assign(document.createElement("a"),{href:url,download:`${task.title}.ics`});
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+};
+
+const fileToBase64 = file => new Promise((res,rej) => {
+  if(file.size > 4*1024*1024){rej(new Error("קובץ גדול מ-4MB"));return;}
+  const r = new FileReader();
+  r.onload = () => res({name:file.name,type:file.type,data:r.result});
+  r.onerror = rej; r.readAsDataURL(file);
+});
+
+/* ── Shared input style ── */
+const IS = {width:"100%",padding:"11px 14px",border:"2px solid var(--border)",borderRadius:12,fontSize:14,color:"var(--text)",background:"#FAFAFA",direction:"rtl",transition:"border-color .2s"};
+const focusIn = e => e.target.style.borderColor = "var(--accent)";
+const focusOut = e => e.target.style.borderColor = "var(--border)";
+
+/* ── LabelBadge ── */
+function LabelBadge({label,allLabels,onRemove,sm}){
+  const c = getLabelColor(label,allLabels);
+  return <span style={{background:c.bg,color:c.text,border:`1px solid ${c.border}`,borderRadius:20,padding:sm?"2px 9px":"3px 11px",fontSize:sm?11:12,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+    {label}{onRemove&&<span onClick={onRemove} style={{cursor:"pointer",fontSize:14,lineHeight:1,opacity:.7}}>×</span>}
+  </span>;
+}
+
+/* ── TaskCard ── */
+function TaskCard({task,allLabels,onComplete,onEdit,onDelete,onICS}){
+  const [open,setOpen] = useState(false);
+  const ref = useRef();
+  useEffect(()=>{
+    const h = e => {if(ref.current&&!ref.current.contains(e.target))setOpen(false)};
+    document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h);
+  },[]);
+  const menu = [
+    {icon:"✏️",label:"ערוך",action:()=>{onEdit(task);setOpen(false)}},
+    {icon:"📅",label:"תזכורת יומן",action:()=>{onICS(task);setOpen(false)}},
+    {icon:"🗑️",label:"מחק",action:()=>{onDelete(task.id);setOpen(false)},danger:true},
+  ];
+  return <div className="card-enter" style={{background:"var(--surface)",borderRadius:"var(--r)",boxShadow:"var(--shadow)",padding:"18px 20px",display:"flex",flexDirection:"column",gap:10}}>
+    <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+      <h3 style={{flex:1,fontSize:16,fontWeight:700,lineHeight:1.4}}>{task.title}</h3>
+      <div ref={ref} style={{position:"relative",flexShrink:0}}>
+        <button onClick={()=>setOpen(v=>!v)} style={{background:open?"#F3F4F6":"none",border:"none",borderRadius:8,padding:"4px 8px",color:"var(--muted)",fontSize:20,lineHeight:1}}>⋮</button>
+        {open&&<div style={{position:"absolute",top:"110%",left:0,zIndex:200,background:"white",border:"1px solid var(--border)",borderRadius:12,boxShadow:"var(--shadow-lg)",minWidth:160,overflow:"hidden"}}>
+          {menu.map(m=><button key={m.label} onClick={m.action} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"10px 16px",background:"none",border:"none",textAlign:"right",fontSize:14,color:m.danger?"var(--danger)":"var(--text)"}}
+            onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
+            onMouseLeave={e=>e.currentTarget.style.background="none"}
+          >{m.icon} {m.label}</button>)}
+        </div>}
+      </div>
+    </div>
+    {task.body&&<p style={{fontSize:14,color:"var(--muted)",lineHeight:1.65,whiteSpace:"pre-wrap"}}>{task.body}</p>}
+    {task.files?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+      {task.files.map((f,i)=><a key={i} href={f.data} download={f.name} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:"#F3F4F6",borderRadius:8,fontSize:12,color:"#374151",textDecoration:"none",border:"1px solid var(--border)"}}>
+        {f.type?.startsWith("image/")?"🖼":"📎"} {f.name}
+      </a>)}
+    </div>}
+    {task.labels?.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+      {task.labels.map(l=><LabelBadge key={l} label={l} allLabels={allLabels} sm/>)}
+    </div>}
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",paddingTop:4}}>
+      <span style={{fontSize:12,color:"var(--muted)"}}>{fmtDate(task.createdAt)}</span>
+      <button onClick={()=>onComplete(task.id)} style={{display:"flex",alignItems:"center",gap:6,background:"#ECFDF5",border:"1px solid #A7F3D0",color:"#065F46",borderRadius:20,padding:"6px 14px",fontSize:13,fontWeight:700}}
+        onMouseEnter={e=>e.currentTarget.style.background="#D1FAE5"}
+        onMouseLeave={e=>e.currentTarget.style.background="#ECFDF5"}
+      >✓ בוצעה</button>
+    </div>
+  </div>;
+}
+
+/* ── Overlay ── */
+function Overlay({onClose,children}){
+  return <div className="overlay-bg" onClick={e=>{if(e.target===e.currentTarget)onClose()}} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",backdropFilter:"blur(2px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:500}}>
+    <div className="sheet" style={{background:"white",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:600,maxHeight:"92vh",display:"flex",flexDirection:"column",direction:"rtl",overflowY:"auto"}}>
+      <div style={{width:40,height:4,background:"#E5E7EB",borderRadius:2,margin:"14px auto 0"}}/>
+      {children}
+    </div>
+  </div>;
+}
+
+/* ── TaskModal ── */
+function TaskModal({task,allLabels,onSave,onClose}){
+  const [title,setTitle] = useState(task?.title||"");
+  const [body,setBody] = useState(task?.body||"");
+  const [selLabels,setSelLabels] = useState(task?.labels||[]);
+  const [files,setFiles] = useState(task?.files||[]);
+  const [uploading,setUploading] = useState(false);
+  const [err,setErr] = useState("");
+  const fileRef = useRef();
+  const toggleLabel = l => setSelLabels(p=>p.includes(l)?p.filter(x=>x!==l):[...p,l]);
+  const handleFiles = async list => {
+    setUploading(true);setErr("");
+    try{const next=await Promise.all(Array.from(list).map(fileToBase64));setFiles(p=>[...p,...next]);}
+    catch(e){setErr(e.message);}
+    setUploading(false);
+  };
+  const submit = () => {
+    if(!title.trim()){setErr("חובה להזין כותרת");return;}
+    onSave({...(task||{}),id:task?.id||uid(),title:title.trim(),body:body.trim(),labels:selLabels,files,createdAt:task?.createdAt||Date.now()});
+  };
+  return <Overlay onClose={onClose}>
+    <div style={{padding:"20px 24px 32px"}}>
+      <h2 style={{fontSize:20,fontWeight:800,marginBottom:20}}>{task?"ערוך משימה":"משימה חדשה"}</h2>
+      <label style={{fontSize:12,fontWeight:700,color:"var(--muted)",display:"block",marginBottom:5}}>כותרת *</label>
+      <input autoFocus value={title} onChange={e=>setTitle(e.target.value)} placeholder="מה צריך לעשות?" style={IS} onFocus={focusIn} onBlur={focusOut}/>
+      <label style={{fontSize:12,fontWeight:700,color:"var(--muted)",display:"block",marginTop:14,marginBottom:5}}>פרטים</label>
+      <textarea value={body} onChange={e=>setBody(e.target.value)} placeholder="הוסף תיאור..." rows={3} style={{...IS,resize:"vertical"}} onFocus={focusIn} onBlur={focusOut}/>
+      {allLabels.length>0&&<>
+        <label style={{fontSize:12,fontWeight:700,color:"var(--muted)",display:"block",marginTop:14,marginBottom:8}}>תוויות</label>
+        <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+          {allLabels.map(l=>{const sel=selLabels.includes(l);const c=getLabelColor(l,allLabels);return(
+            <button key={l} onClick={()=>toggleLabel(l)} style={{padding:"4px 13px",borderRadius:20,fontSize:13,fontWeight:700,background:sel?c.bg:"#F9FAFB",color:sel?c.text:"#6B7280",border:sel?`2px solid ${c.border}`:"2px solid #E5E7EB",transition:"all .15s"}}>
+              {sel&&"✓ "}{l}
+            </button>
+          );})}
+        </div>
+      </>}
+      <label style={{fontSize:12,fontWeight:700,color:"var(--muted)",display:"block",marginTop:14,marginBottom:8}}>קבצים מצורפים</label>
+      {files.length>0&&<div style={{display:"flex",flexWrap:"wrap",gap:7,marginBottom:8}}>
+        {files.map((f,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,padding:"4px 10px",background:"#F3F4F6",borderRadius:8,fontSize:12,border:"1px solid var(--border)"}}>
+          {f.type?.startsWith("image/")?"🖼":"📎"} {f.name}
+          <span onClick={()=>setFiles(p=>p.filter((_,j)=>j!==i))} style={{cursor:"pointer",color:"#9CA3AF",fontSize:16,lineHeight:1}}>×</span>
+        </div>)}
+      </div>}
+      <button onClick={()=>fileRef.current.click()} disabled={uploading} style={{padding:"9px 14px",border:"2px dashed #D1D5DB",borderRadius:12,background:"none",fontSize:13,color:"var(--muted)",display:"flex",alignItems:"center",gap:8}}>
+        📎 {uploading?"מעלה...":"הוסף קובץ (עד 4MB)"}
+      </button>
+      <input ref={fileRef} type="file" multiple accept="image/*,.pdf,.doc,.docx,.txt,.xlsx,.csv" style={{display:"none"}} onChange={e=>handleFiles(e.target.files)}/>
+      {err&&<p style={{color:"var(--danger)",fontSize:13,marginTop:10}}>{err}</p>}
+      <div style={{display:"flex",gap:10,marginTop:22}}>
+        <button onClick={submit} style={{flex:1,padding:14,background:"var(--accent)",color:"white",border:"none",borderRadius:12,fontSize:15,fontWeight:800}}>
+          {task?"שמור שינויים":"הוסף משימה"}
+        </button>
+        <button onClick={onClose} style={{padding:"14px 18px",background:"#F3F4F6",color:"var(--muted)",border:"none",borderRadius:12,fontSize:15,fontWeight:600}}>ביטול</button>
+      </div>
+    </div>
+  </Overlay>;
+}
+
+/* ── SettingsModal ── */
+function SettingsModal({labels,setLabels,completedTasks,onReopen,onDelComp,onClose}){
+  const [view,setView] = useState("labels");
+  const [newLabel,setNewLabel] = useState("");
+  const addLabel = () => {const t=newLabel.trim();if(!t||labels.includes(t))return;setLabels(p=>[...p,t]);setNewLabel("");};
+  return <Overlay onClose={onClose}>
+    <div style={{padding:"20px 24px 0",flexShrink:0}}>
+      <div style={{display:"flex",gap:4,background:"#F3F4F6",borderRadius:12,padding:4,marginBottom:18}}>
+        {[{id:"labels",label:`🏷️ תוויות`},{id:"done",label:`✅ בוצעו (${completedTasks.length})`}].map(t=>(
+          <button key={t.id} onClick={()=>setView(t.id)} style={{flex:1,padding:"8px 12px",borderRadius:9,border:"none",background:view===t.id?"white":"none",color:view===t.id?"var(--text)":"var(--muted)",fontWeight:view===t.id?700:500,fontSize:14,boxShadow:view===t.id?"0 1px 4px rgba(0,0,0,.1)":"none",transition:"all .2s"}}>{t.label}</button>
+        ))}
+      </div>
+    </div>
+    <div style={{overflow:"auto",padding:"0 24px 28px"}}>
+      {view==="labels"&&<>
+        <div style={{display:"flex",gap:8,marginBottom:14}}>
+          <input value={newLabel} onChange={e=>setNewLabel(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addLabel()} placeholder="שם תווית חדשה..." style={{...IS,fontSize:14}} onFocus={focusIn} onBlur={focusOut}/>
+          <button onClick={addLabel} style={{padding:"11px 16px",background:"var(--accent)",color:"white",border:"none",borderRadius:12,fontWeight:700,fontSize:14,flexShrink:0}}>הוסף</button>
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {labels.map(l=>{const c=getLabelColor(l,labels);return(
+            <div key={l} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#FAFAFA",borderRadius:10,border:"1px solid var(--border)"}}>
+              <span style={{padding:"3px 11px",background:c.bg,color:c.text,border:`1px solid ${c.border}`,borderRadius:20,fontSize:13,fontWeight:700}}>{l}</span>
+              <button onClick={()=>setLabels(p=>p.filter(x=>x!==l))} style={{background:"none",border:"none",color:"#9CA3AF",fontSize:18,padding:"4px 6px",borderRadius:6}}>🗑️</button>
+            </div>
+          );})}
+          {labels.length===0&&<p style={{textAlign:"center",color:"var(--muted)",padding:"24px 0",fontSize:14}}>אין תוויות. הוסף למעלה.</p>}
+        </div>
+      </>}
+      {view==="done"&&<div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {completedTasks.length===0&&<p style={{textAlign:"center",color:"var(--muted)",padding:"32px 0",fontSize:14}}>אין משימות שהושלמו עדיין</p>}
+        {completedTasks.map(t=>(
+          <div key={t.id} style={{padding:"13px 16px",background:"#FAFAFA",borderRadius:12,border:"1px solid var(--border)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{fontSize:14,fontWeight:600,color:"#6B7280",textDecoration:"line-through",margin:0}}>{t.title}</p>
+                {t.completedAt&&<p style={{fontSize:12,color:"var(--muted)",marginTop:3}}>הושלם: {fmtDate(t.completedAt)}</p>}
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>onReopen(t.id)} style={{padding:"5px 11px",background:"#EFF6FF",color:"#1D4ED8",border:"1px solid #BFDBFE",borderRadius:8,fontSize:12,fontWeight:700}}>פתח מחדש</button>
+                <button onClick={()=>onDelComp(t.id)} style={{background:"none",border:"none",color:"#9CA3AF",fontSize:16,padding:"4px"}}>🗑️</button>
+              </div>
+            </div>
+            {t.labels?.length>0&&<div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:8}}>
+              {t.labels.map(l=><LabelBadge key={l} label={l} allLabels={[]} sm/>)}
+            </div>}
+          </div>
+        ))}
+      </div>}
+    </div>
+  </Overlay>;
+}
+
+/* ══ MAIN APP ══ */
+function App(){
+  const [tasks,setTasks] = useState([]);
+  const [completed,setCompleted] = useState([]);
+  const [labels,setLabels] = useState(["עבודה","אישי","דחוף","ביתי","כספים"]);
+  const [showAdd,setShowAdd] = useState(false);
+  const [editTask,setEditTask] = useState(null);
+  const [showSettings,setShowSettings] = useState(false);
+  const [showMenu,setShowMenu] = useState(false);
+  const [fbStatus,setFbStatus] = useState("connecting");
+  const [fb,setFb] = useState(null);
+  const menuRef = useRef();
+
+  useEffect(()=>{
+    const h = e => {if(menuRef.current&&!menuRef.current.contains(e.target))setShowMenu(false)};
+    document.addEventListener("mousedown",h); return()=>document.removeEventListener("mousedown",h);
+  },[]);
+
+  /* Firebase init */
+  const [fbError,setFbError] = useState("");
+  useEffect(()=>{
+    const onErr = () => { setFbStatus("error"); setFbError(window.__FB_ERROR||"שגיאה לא ידועה"); };
+    window.addEventListener("fb-error", onErr, {once:true});
+    const init = () => {
+      if(!window.__FB){setFbStatus("error");setFbError("Firebase לא נטען");return;}
+      const {db,ref,onValue,set,remove} = window.__FB;
+      try{
+        onValue(ref(db,"tasks"),snap=>{const v=snap.val();setTasks(v?Object.values(v).sort((a,b)=>b.createdAt-a.createdAt):[]);});
+        onValue(ref(db,"completed"),snap=>{const v=snap.val();setCompleted(v?Object.values(v).sort((a,b)=>b.completedAt-a.completedAt):[]);});
+        onValue(ref(db,"labels"),snap=>{const v=snap.val();if(v&&Array.isArray(v))setLabels(v);});
+        setFb({db,ref,set,remove});
+        setFbStatus("ok");
+      }catch(e){setFbStatus("error");setFbError(e.message);}
+    };
+    if(window.__FB_READY) init();
+    else window.addEventListener("fb-ready",init,{once:true});
+    setTimeout(()=>{ if(!window.__FB_READY){ setFbStatus("error"); setFbError("Firebase לא נטען — בדוק חיבור אינטרנט"); } },6000);
+  },[]);
+
+  useEffect(()=>{if(fb)fb.set(fb.ref(fb.db,"labels"),labels);},[labels,fb]);
+
+  const saveTask = useCallback(task=>{
+    if(fb){fb.set(fb.ref(fb.db,`tasks/${task.id}`),task);}
+    else{const ex=tasks.find(t=>t.id===task.id);setTasks(p=>ex?p.map(t=>t.id===task.id?task:t):[task,...p]);}
+    setShowAdd(false);setEditTask(null);
+  },[tasks,fb]);
+
+  const deleteTask = useCallback(id=>{
+    if(fb)fb.remove(fb.ref(fb.db,`tasks/${id}`));
+    else setTasks(p=>p.filter(t=>t.id!==id));
+  },[fb]);
+
+  const completeTask = useCallback(id=>{
+    const task=tasks.find(t=>t.id===id);if(!task)return;
+    const done={...task,completedAt:Date.now()};
+    if(fb){fb.set(fb.ref(fb.db,`completed/${id}`),done);fb.remove(fb.ref(fb.db,`tasks/${id}`));}
+    else{setCompleted(p=>[done,...p]);setTasks(p=>p.filter(t=>t.id!==id));}
+  },[tasks,fb]);
+
+  const reopenTask = useCallback(id=>{
+    const task=completed.find(t=>t.id===id);if(!task)return;
+    const {completedAt,...reopened}=task;
+    if(fb){fb.set(fb.ref(fb.db,`tasks/${id}`),reopened);fb.remove(fb.ref(fb.db,`completed/${id}`));}
+    else{setTasks(p=>[reopened,...p]);setCompleted(p=>p.filter(t=>t.id!==id));}
+  },[completed,fb]);
+
+  const delComp = useCallback(id=>{
+    if(fb)fb.remove(fb.ref(fb.db,`completed/${id}`));
+    else setCompleted(p=>p.filter(t=>t.id!==id));
+  },[fb]);
+
+  const dotColor={connecting:"#FBBF24",ok:"#10B981",error:"#EF4444"}[fbStatus];
+  const dotTitle={connecting:"מתחבר...",ok:"מחובר לענן ✓",error:"שגיאת Firebase"}[fbStatus];
+
+  return <div style={{minHeight:"100vh",background:"var(--bg)"}}>
+    {/* HEADER */}
+    <header style={{background:"white",borderBottom:"1px solid var(--border)",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 3px rgba(0,0,0,.06)"}}>
+      <div style={{maxWidth:640,margin:"0 auto",height:62,display:"flex",alignItems:"center",justifyContent:"space-between",padding:"0 20px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}} ref={menuRef}>
+          <span style={{fontSize:14,fontWeight:500,color:"var(--muted)"}}>{TODAY()}</span>
+          <div style={{position:"relative"}}>
+            <button onClick={()=>setShowMenu(v=>!v)} style={{background:showMenu?"#F3F4F6":"none",border:"none",borderRadius:8,padding:"5px 8px",color:"var(--muted)",fontSize:22,lineHeight:1}}>⋯</button>
+            {showMenu&&<div style={{position:"absolute",top:"115%",right:0,zIndex:300,background:"white",border:"1px solid var(--border)",borderRadius:14,boxShadow:"var(--shadow-lg)",minWidth:210,overflow:"hidden"}}>
+              {[
+                {icon:"🏷️",label:"ניהול תוויות",action:()=>{setShowSettings(true);setShowMenu(false)}},
+                {icon:"✅",label:`משימות שבוצעו (${completed.length})`,action:()=>{setShowSettings(true);setShowMenu(false)}},
+              ].map(m=><button key={m.label} onClick={m.action} style={{display:"flex",alignItems:"center",gap:10,width:"100%",padding:"12px 16px",background:"none",border:"none",textAlign:"right",fontSize:14,color:"var(--text)"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#F9FAFB"}
+                onMouseLeave={e=>e.currentTarget.style.background="none"}
+              >{m.icon} {m.label}</button>)}
+            </div>}
+          </div>
+          <span title={dotTitle} style={{width:9,height:9,borderRadius:"50%",background:dotColor,flexShrink:0,boxShadow:`0 0 0 2px white`}}/>
+        </div>
+        <button onClick={()=>setShowAdd(true)} style={{width:44,height:44,borderRadius:"50%",background:"var(--accent)",color:"white",border:"none",fontSize:26,fontWeight:300,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 2px 10px rgba(37,99,235,.45)"}}>+</button>
+      </div>
+    </header>
+
+    {/* MAIN */}
+    <main style={{maxWidth:640,margin:"0 auto",padding:"22px 16px 60px"}}>
+      {fbStatus==="error"&&<div style={{background:"#FEF2F2",border:"1px solid #FECACA",borderRadius:12,padding:"12px 16px",marginBottom:18}}>
+        <p style={{fontSize:13,color:"var(--danger)",margin:"0 0 4px",fontWeight:700}}>⚠️ שגיאה בהתחברות ל-Firebase</p>
+        {fbError&&<p style={{fontSize:12,color:"#991b1b",margin:0,fontFamily:"monospace",background:"#fee2e2",padding:"4px 8px",borderRadius:6,wordBreak:"break-all"}}>{fbError}</p>}
+      </div>}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <h2 style={{fontSize:18,fontWeight:800}}>{tasks.length>0?`${tasks.length} משימות פתוחות`:"משימות פתוחות"}</h2>
+        {completed.length>0&&<span style={{fontSize:13,color:"var(--muted)"}}>{completed.length} הושלמו</span>}
+      </div>
+      {tasks.length===0&&<div style={{textAlign:"center",padding:"56px 20px",background:"white",borderRadius:"var(--r)",boxShadow:"var(--shadow)"}}>
+        <div style={{fontSize:52,marginBottom:14}}>🗂️</div>
+        <p style={{fontSize:18,fontWeight:800,marginBottom:6}}>אין משימות פתוחות</p>
+        <p style={{fontSize:14,color:"var(--muted)",marginBottom:22}}>לחץ + כדי להוסיף משימה חדשה</p>
+        <button onClick={()=>setShowAdd(true)} style={{padding:"12px 24px",background:"var(--accent)",color:"white",border:"none",borderRadius:50,fontSize:14,fontWeight:800}}>+ הוסף משימה ראשונה</button>
+      </div>}
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {tasks.map(t=><TaskCard key={t.id} task={t} allLabels={labels} onComplete={completeTask} onEdit={setEditTask} onDelete={deleteTask} onICS={generateICS}/>)}
+      </div>
+    </main>
+
+    {showAdd&&<TaskModal allLabels={labels} onSave={saveTask} onClose={()=>setShowAdd(false)}/>}
+    {editTask&&<TaskModal task={editTask} allLabels={labels} onSave={saveTask} onClose={()=>setEditTask(null)}/>}
+    {showSettings&&<SettingsModal labels={labels} setLabels={setLabels} completedTasks={completed} onReopen={reopenTask} onDelComp={delComp} onClose={()=>setShowSettings(false)}/>}
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
